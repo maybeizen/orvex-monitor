@@ -1,0 +1,30 @@
+{
+  "name": "@orvex/database",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch --no-clean",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "clean": "rm -rf dist",
+    "db:types": "bunx supabase gen types typescript --local > src/types.ts"
+  },
+  "dependencies": {
+    "@orvex/types": "workspace:*",
+    "@supabase/supabase-js": "^2.49.5"
+  },
+  "devDependencies": {
+    "@orvex/config": "workspace:*",
+    "@types/node": "^22.0.0",
+    "tsdown": "^0.22.0",
+    "typescript": "^5.8.3"
+  }
+}

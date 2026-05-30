@@ -1,0 +1,8 @@
+{
+  "extends": "@orvex/config/tsconfig/node",
+  "compilerOptions": {
+    "noEmit": true,
+    "exactOptionalPropertyTypes": false
+  },
+  "include": ["vite.config.ts"]
+}

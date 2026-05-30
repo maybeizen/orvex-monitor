@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+.next/
+out/
+
+# Turbo
+.turbo/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Testing
+playwright-report/
+test-results/
+coverage/
+
+# Misc
+.DS_Store
+*.tsbuildinfo
+
+# Bun
+bun.lock
+
+# Claude
+skills-lock.json
+.superpowers/
+
+supabase/

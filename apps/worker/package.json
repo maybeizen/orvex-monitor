@@ -1,0 +1,30 @@
+{
+  "name": "@orvex/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsdown",
+    "dev": "bun run src/index.ts --watch",
+    "start": "node dist/index.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@orvex/cache": "workspace:*",
+    "@orvex/database": "workspace:*",
+    "@orvex/email": "workspace:*",
+    "@orvex/logger": "workspace:*",
+    "@orvex/types": "workspace:*",
+    "dotenv": "^16.5.0",
+    "node-cron": "^3.0.3"
+  },
+  "devDependencies": {
+    "@orvex/config": "workspace:*",
+    "@types/node": "^22.0.0",
+    "@types/node-cron": "^3.0.11",
+    "tsdown": "^0.22.0",
+    "typescript": "^5.8.3"
+  }
+}

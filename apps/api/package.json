@@ -1,0 +1,39 @@
+{
+  "name": "@orvex/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsdown",
+    "dev": "bun run src/index.ts --watch",
+    "start": "node dist/index.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@orvex/cache": "workspace:*",
+    "@orvex/database": "workspace:*",
+    "@orvex/email": "workspace:*",
+    "@orvex/logger": "workspace:*",
+    "@orvex/types": "workspace:*",
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
+    "express": "^5.2.0",
+    "express-rate-limit": "^8.5.2",
+    "express-session": "^1.19.0",
+    "helmet": "^8.0.0",
+    "otplib": "^12.0.1",
+    "standardwebhooks": "^1.0.0",
+    "zod": "^3.25.67"
+  },
+  "devDependencies": {
+    "@orvex/config": "workspace:*",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.6",
+    "@types/express-session": "^1.19.0",
+    "@types/node": "^22.0.0",
+    "tsdown": "^0.22.0",
+    "typescript": "^5.8.3"
+  }
+}
