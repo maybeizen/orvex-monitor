@@ -1,13 +1,6 @@
-import type { Json } from "@orvex/database";
-import {
-  createSupabaseClient,
-  mfaRepository,
-  usersRepository,
-} from "@orvex/database";
-import type { ProfileRow } from "@orvex/database";
-import { sendAccountDeactivationEmail } from "@orvex/email";
+import type { Json, ProfileRow } from "@orvex/database";
+import { mfaRepository, usersRepository } from "@orvex/database";
 
-import { getEnv } from "../../config/env";
 import {
   decryptMfaSecret,
   encryptMfaSecret,
@@ -23,6 +16,7 @@ import {
 } from "../../lib/mfa-totp";
 import { AppError } from "../../utils/AppError";
 import { ErrorCodes } from "../../constants/http";
+import { verifyPassword } from "../auth/auth.service";
 
 interface BackupCodeEntry {
   hash: string;
@@ -51,9 +45,9 @@ export async function verifyUserPassword(
   email: string,
   password: string,
 ): Promise<boolean> {
-  const client = createSupabaseClient();
-  const { error } = await client.auth.signInWithPassword({ email, password });
-  return error === null;
+  const profile = await usersRepository.findByEmail(email.toLowerCase());
+  if (!profile) return false;
+  return verifyPassword(profile.password_hash, password);
 }
 
 export async function requireMfaIfEnabled(
@@ -85,7 +79,7 @@ export async function verifyMfaCode(
     return;
   }
 
-  const backupCodes = parseBackupCodes(row.backup_codes);
+  const backupCodes = parseBackupCodes(row.backup_codes as Json);
   const hash = hashBackupCode(normalized.toUpperCase());
   const matchIndex = backupCodes.findIndex(
     (entry) => !entry.used && entry.hash === hash,
@@ -185,13 +179,4 @@ export async function disableMfa(
   await verifyMfaCode(userId, otp);
   await mfaRepository.disable(userId);
   await usersRepository.setMfaEnabled(userId, false);
-}
-
-export async function sendDeactivationEmail(
-  email: string,
-  scheduledAt: Date,
-): Promise<void> {
-  const env = getEnv();
-  await sendAccountDeactivationEmail({ email, scheduledAt });
-  void env;
 }

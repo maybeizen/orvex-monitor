@@ -5,7 +5,7 @@ import { MailCheck } from "lucide-react";
 import { Button, ErrorMessage, Input, useToast } from "@orvex/ui";
 
 import { AuthLayout } from "@/components/auth/AuthLayout";
-import { getAuthErrorMessage, sendPasswordResetEmail } from "@/lib/auth";
+import { forgotPassword, getAuthErrorMessage } from "@/lib/auth-api";
 import { forgotPasswordSchema } from "@/schemas/auth";
 
 export default function ForgotPasswordPage() {
@@ -29,7 +29,7 @@ export default function ForgotPasswordPage() {
 
     setLoading(true);
     try {
-      await sendPasswordResetEmail(parsed.data.email);
+      await forgotPassword(parsed.data.email);
       setSent(true);
       toast({
         title: "Reset email sent",

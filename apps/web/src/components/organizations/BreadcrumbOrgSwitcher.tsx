@@ -141,6 +141,7 @@ export function BreadcrumbOrgSwitcher({
               key={organization.id}
               type="button"
               role="option"
+              aria-selected={false}
               onClick={() => { handleSelect(organization.slug); }}
               className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors hover:bg-white/5"
             >

@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Eye, EyeOff, Shield, ShieldOff } from "lucide-react";
-import type { Provider } from "@supabase/supabase-js";
 
 import { UserOAuthProvider } from "@orvex/types";
 import { Badge, Button, Input, useToast } from "@orvex/ui";
@@ -11,13 +10,13 @@ import { MfaDisableModal } from "@/components/account/MfaDisableModal";
 import { MfaEnrollModal } from "@/components/account/MfaEnrollModal";
 import { RequireMfaDialog } from "@/components/account/RequireMfaDialog";
 import { useAccount } from "@/hooks/use-account";
+import { changeEmail, changePassword, fetchOAuth } from "@/lib/account-api";
 import {
-  changeEmail,
-  changePassword,
-  fetchOAuth,
-  syncOAuth,
-} from "@/lib/account-api";
-import { getAuthErrorMessage, linkOAuthProvider, unlinkOAuthProvider } from "@/lib/auth";
+  getAuthErrorMessage,
+  startOAuthLink,
+  unlinkOAuthProvider,
+  type OAuthProvider,
+} from "@/lib/auth-api";
 import { z } from "zod";
 
 const passwordChangeSchema = z
@@ -30,7 +29,7 @@ const passwordChangeSchema = z
     path: ["confirmPassword"],
   });
 
-const providerMeta: Array<{ id: Provider; label: string; enum: UserOAuthProvider }> = [
+const providerMeta: Array<{ id: OAuthProvider; label: string; enum: UserOAuthProvider }> = [
   { id: "google", label: "Google", enum: UserOAuthProvider.Google },
   { id: "github", label: "GitHub", enum: UserOAuthProvider.GitHub },
 ];
@@ -52,7 +51,7 @@ export default function AccountSecurityPage() {
   const [enrollOpen, setEnrollOpen] = useState(false);
   const [disableOpen, setDisableOpen] = useState(false);
   const [mfaDialog, setMfaDialog] = useState<"email" | "password" | null>(null);
-  const [linking, setLinking] = useState<Provider | null>(null);
+  const [unlinking, setUnlinking] = useState<OAuthProvider | null>(null);
 
   const linked = new Set(oauthQuery.data ?? account?.linkedProviders ?? []);
 
@@ -97,24 +96,21 @@ export default function AccountSecurityPage() {
     }
   }
 
-  async function handleLink(provider: Provider) {
-    setLinking(provider);
-    try {
-      await linkOAuthProvider(provider);
-    } catch (err) {
-      toast({ variant: "error", title: getAuthErrorMessage(err) });
-      setLinking(null);
-    }
+  function handleLink(provider: OAuthProvider) {
+    startOAuthLink(provider);
   }
 
-  async function handleUnlink(provider: Provider) {
+  async function handleUnlink(provider: OAuthProvider) {
+    setUnlinking(provider);
     try {
       await unlinkOAuthProvider(provider);
-      await syncOAuth();
       void queryClient.invalidateQueries({ queryKey: ["account"] });
+      void queryClient.invalidateQueries({ queryKey: ["account", "oauth"] });
       toast({ variant: "success", title: "Provider unlinked" });
     } catch (err) {
       toast({ variant: "error", title: getAuthErrorMessage(err) });
+    } finally {
+      setUnlinking(null);
     }
   }
 
@@ -218,6 +214,7 @@ export default function AccountSecurityPage() {
                   <Button
                     variant="ghost"
                     size="sm"
+                    loading={unlinking === id}
                     onClick={() => void handleUnlink(id)}
                   >
                     Unlink
@@ -226,8 +223,7 @@ export default function AccountSecurityPage() {
                   <Button
                     variant="secondary"
                     size="sm"
-                    loading={linking === id}
-                    onClick={() => void handleLink(id)}
+                    onClick={() => { handleLink(id); }}
                   >
                     Connect
                   </Button>

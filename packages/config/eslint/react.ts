@@ -12,7 +12,7 @@ export default tseslint.config(
   reactHooks.configs["recommended-latest"],
   jsxA11y.flatConfigs.recommended,
   {
-    settings: { react: { version: "detect" } },
+    settings: { react: { version: "19.0" } },
     rules: {
       "react/prop-types": "off",
     },

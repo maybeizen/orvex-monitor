@@ -14,8 +14,8 @@
   "dependencies": {
     "@orvex/cache": "workspace:*",
     "@orvex/database": "workspace:*",
-    "@orvex/email": "workspace:*",
     "@orvex/logger": "workspace:*",
+    "@orvex/mailer": "workspace:*",
     "@orvex/types": "workspace:*",
     "dotenv": "^16.5.0",
     "node-cron": "^3.0.3"

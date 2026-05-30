@@ -27,6 +27,11 @@ accountRouter.patch(
   ...requireAuthenticatedUser,
   controller.changeEmail,
 );
+accountRouter.post(
+  "/email/confirm",
+  createAuthRateLimiter(),
+  controller.confirmEmailChange,
+);
 accountRouter.patch(
   "/password",
   createAuthRateLimiter(),
@@ -34,7 +39,16 @@ accountRouter.patch(
   controller.changePassword,
 );
 accountRouter.get("/oauth", ...requireAuthenticatedUser, controller.getOAuth);
-accountRouter.post("/oauth/sync", ...requireAuthenticatedUser, controller.syncOAuth);
+accountRouter.post(
+  "/oauth/:provider/link",
+  ...requireAuthenticatedUser,
+  controller.linkOAuth,
+);
+accountRouter.delete(
+  "/oauth/:provider",
+  ...requireAuthenticatedUser,
+  controller.unlinkOAuth,
+);
 
 accountRouter.post("/mfa/enroll", ...requireAuthenticatedUser, controller.enrollMfa);
 accountRouter.post(

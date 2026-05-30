@@ -156,6 +156,7 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select
         ref={ref}
         id={selectId}
         type="button"
+        role="combobox"
         disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -213,6 +214,14 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select
                   if (!option.disabled && enabledIdx >= 0) setHighlightIndex(enabledIdx);
                 }}
                 onClick={() => { if (!option.disabled) setValue(option.value); }}
+                onKeyDown={(e) => {
+                  if (option.disabled) return;
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setValue(option.value);
+                  }
+                }}
+                tabIndex={option.disabled ? -1 : 0}
                 className={cn(
                   "cursor-pointer px-3 py-2 text-sm text-slate-300 transition-colors duration-100",
                   isHighlighted && "bg-white/5 text-slate-100",

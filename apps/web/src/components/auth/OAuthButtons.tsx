@@ -1,9 +1,7 @@
-import { useState } from "react";
-import type { Provider } from "@supabase/supabase-js";
-
 import { Button } from "@orvex/ui";
 
-import { getAuthErrorMessage, signInWithOAuth } from "@/lib/auth";
+import { startOAuthSignIn } from "@/lib/auth-api";
+import type { OAuthProvider } from "@/lib/auth-api";
 
 function GoogleIcon() {
   return (
@@ -39,26 +37,14 @@ function GitHubIcon() {
   );
 }
 
-const providers: Array<{ id: Provider; label: string; icon: typeof GoogleIcon }> = [
+const providers: Array<{ id: OAuthProvider; label: string; icon: typeof GoogleIcon }> = [
   { id: "google", label: "Google", icon: GoogleIcon },
   { id: "github", label: "GitHub", icon: GitHubIcon },
 ];
 
-interface OAuthButtonsProps {
-  onError: (message: string) => void;
-}
-
-export function OAuthButtons({ onError }: OAuthButtonsProps) {
-  const [loadingProvider, setLoadingProvider] = useState<Provider | null>(null);
-
-  async function handleOAuth(provider: Provider) {
-    setLoadingProvider(provider);
-    try {
-      await signInWithOAuth(provider);
-    } catch (err) {
-      onError(getAuthErrorMessage(err));
-      setLoadingProvider(null);
-    }
+export function OAuthButtons() {
+  function handleOAuth(provider: OAuthProvider) {
+    startOAuthSignIn(provider);
   }
 
   return (
@@ -69,10 +55,8 @@ export function OAuthButtons({ onError }: OAuthButtonsProps) {
           type="button"
           variant="secondary"
           className="w-full"
-          loading={loadingProvider === id}
-          disabled={loadingProvider !== null && loadingProvider !== id}
           leftIcon={<Icon />}
-          onClick={() => { void handleOAuth(id); }}
+          onClick={() => { handleOAuth(id); }}
         >
           {label}
         </Button>

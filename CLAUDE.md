@@ -10,7 +10,7 @@ These are easy to violate and hard to debug — front-loaded so attention picks 
 2. **All packages are ESM-only** (`"type": "module"`). Do not introduce CJS output or `require()`.
 3. **`exactOptionalPropertyTypes: true`** is set in `packages/config/tsconfig/base.json`. `apps/web/tsconfig.node.json` is the only file that overrides this (set to `false` for Playwright compatibility — note that Playwright itself has since been removed; see "Known stale references" below).
 4. **Bun is the package manager** (`bun@1.2.15`, Node `>=22`). Do not use `npm install` / `yarn`.
-5. **Auth boundary**: the web app uses Supabase anon key and attaches a JWT to every API call; the API and worker use the **service role key** and bypass RLS. Never put the service role key in browser code.
+5. **Auth boundary**: the web app is a pure API client — no auth SDK, no tokens in JS storage. Identity comes from an `HttpOnly` session cookie (`orvex.sid`) set by the API. Mutations require a CSRF double-submit cookie (`XSRF-TOKEN` header). Never put `SESSION_SECRET`, database credentials, SMTP passwords, or S3 keys in browser code.
 
 ## Project shape
 
@@ -19,21 +19,21 @@ This is a Turborepo + Bun monorepo for an uptime/monitoring product.
 ```
 apps/
   web/      React 19 SPA (Vite + React Router v7 + TanStack Query + Zustand)
-  api/      Express REST API (tsdown → Node, JWT-gated)
-  worker/   Uptime check scheduler (tsdown → Node, node-cron)
+  api/      Express REST API (tsdown → Node, session-gated)
+  worker/   Background jobs (tsdown → Node, node-cron)
 packages/
   types/    @orvex/types    — shared TS types, enums, PLAN_LIMITS
   config/   @orvex/config   — tsconfig, ESLint, Prettier, tsdown presets (no build)
-  database/ @orvex/database — Supabase clients + repositories
-  cache/    @orvex/cache    — Upstash Redis client + key/TTL factories
+  database/ @orvex/database — Drizzle ORM schema, migrations, repositories
+  cache/    @orvex/cache    — ioredis client + key/TTL factories
+  mailer/   @orvex/mailer   — nodemailer + HTML email templates
+  storage/  @orvex/storage  — local filesystem or S3 uploads (multer)
   logger/   @orvex/logger   — winston + express-winston middleware
   ui/       @orvex/ui       — shared React components (Vite library mode)
-supabase/
-  migrations/  SQL run against the remote Supabase project
 ```
 
 Turbo build order is derived from `dependsOn: ["^build"]`:
-`config → types → logger/cache/database → ui/api/worker → web`.
+`config → types → logger/cache/mailer/storage/database → ui/api/worker → web`.
 
 ## Where to look (load on demand, don't pre-read)
 
@@ -43,28 +43,38 @@ Static context here is a **pointer map**, not a duplicate of the code. Open file
 |---|---|
 | Build/lint/test task graph | `turbo.json` |
 | Shared TS/ESLint/tsdown presets | `packages/config/` |
-| Browser Supabase client | `apps/web/src/lib/supabase.ts` |
-| Authenticated fetch wrapper | `apps/web/src/lib/api-client.ts` |
+| Authenticated fetch wrapper + CSRF | `apps/web/src/lib/api-client.ts` |
 | Auth store (Zustand) | `apps/web/src/stores/auth.store.ts` |
-| API JWT middleware | `apps/api/src/middleware/auth.ts` |
+| Session middleware | `apps/api/src/config/session.ts` |
+| CSRF middleware | `apps/api/src/middlewares/csrf.middleware.ts` |
+| Passport OAuth | `apps/api/src/config/passport.ts` |
 | API routes | `apps/api/src/routes/` |
 | Cron scheduler & interval logic | `apps/worker/src/scheduler.ts` |
-| Uptime check job | `apps/worker/src/jobs/uptime-check.ts` |
-| Supabase service-role / anon clients | `packages/database/src/client.ts` |
+| Account purge job | `apps/worker/src/jobs/account-purge.ts` |
+| Drizzle client + schema | `packages/database/src/client.ts`, `packages/database/src/schema/` |
 | Repositories | `packages/database/src/repositories/` |
-| Generated Supabase types | `packages/database/src/types.ts` (regen via `bun run db:types`) |
-| Cache keys & TTLs | `packages/cache/src/index.ts` |
-| SQL schema (13 tables, all RLS-enabled) | `supabase/migrations/` |
+| SQL migrations | `packages/database/src/migrations/` |
+| Redis client | `packages/cache/src/client.ts` |
+| Cache keys & TTLs | `packages/cache/src/keys.ts` |
+| Email transport + templates | `packages/mailer/src/` |
+| File uploads (local/S3) | `packages/storage/src/` |
 
 ## Environment
 
-`.env.example` is currently empty (known gap). The required variables can be discovered from where they're consumed:
+Root `.env.example` consolidates all variables. Per-app examples live under `apps/api/.env.example`, `apps/worker/.env.example`, and `apps/web/.env.example`.
 
-- **Supabase** (service role + anon URL/key): see `packages/database/src/client.ts`
-- **Supabase browser** (`VITE_SUPABASE_*`): see `apps/web/src/lib/supabase.ts`
-- **Upstash Redis**: see `packages/cache/src/index.ts`
+| Variable group | Used by |
+|---|---|
+| `DATABASE_URL` | API, worker, database package |
+| `REDIS_URL` | API (sessions + cache), worker |
+| `SESSION_*`, `CSRF_SECRET` | API |
+| `SMTP_*`, `EMAIL_FROM` | API, worker |
+| `STORAGE_*`, `S3_*` | API |
+| `GOOGLE_*`, `GITHUB_*`, `OAUTH_CALLBACK_BASE_URL` | API (Passport OAuth) |
+| `WEB_ORIGIN` | API (CORS, email links, OAuth redirects) |
+| `VITE_DOCS_URL` | Web (optional public URL only) |
 
-Before running anything, populate `.env` at the repo root with the variables those files reference.
+Before running anything, populate `.env` at the repo root (or per-app) with the variables those files reference.
 
 ## Commands
 
@@ -86,7 +96,9 @@ turbo lint -- --fix
 bun run format         # prettier write
 bun run format:check   # CI check
 
-cd packages/database && bun run db:types # regenerate Supabase types after a migration
+cd packages/database && bun run db:generate  # generate migration SQL after schema change
+cd packages/database && bun run db:migrate   # apply migrations
+cd packages/database && bun run db:push      # push schema directly (dev only)
 
 bun run clean                            # nuke dist/ + node_modules/
 ```
@@ -114,7 +126,6 @@ Three flat-config presets in `packages/config/eslint/`:
 ## Known stale references (don't follow blindly)
 
 - **Playwright was removed.** `apps/web/playwright.config.ts` and `apps/web/tests/e2e/**` are deleted. `apps/web/package.json` still defines `test:e2e` / `test:e2e:ui` scripts and lists `@playwright/test` as a devDep, and `turbo.json` still has a `test:e2e` task. These references are dead — running them will fail. Either re-introduce e2e or strip the scripts; do not assume e2e exists.
-- **`.env.example` is empty.** See the Environment section above.
 
 ## Agent skills
 

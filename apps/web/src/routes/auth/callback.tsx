@@ -3,8 +3,7 @@ import { useNavigate } from "react-router";
 
 import { Spinner, useToast } from "@orvex/ui";
 
-import { getAuthErrorMessage } from "@/lib/auth";
-import { syncOAuth } from "@/lib/account-api";
+import { getAuthErrorMessage } from "@/lib/auth-api";
 import { useAuthRedirectPath } from "@/hooks/use-auth-redirect";
 import { useAuthStore } from "@/stores/auth.store";
 
@@ -21,7 +20,6 @@ export default function AuthCallbackPage() {
       try {
         const session = await completeAuthFlow();
         if (isLinkFlow) {
-          await syncOAuth();
           toast({ title: "Account connected", variant: "success" });
           navigate("/app/account/security", { replace: true });
           return;

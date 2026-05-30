@@ -1,14 +1,18 @@
+import { UserOAuthProvider } from "@orvex/types";
 import type { NextFunction, Request, Response } from "express";
 
 import type { AuthenticatedRequest } from "../../types/express";
 import { ErrorCodes } from "../../constants/http";
+import { startOAuthLink } from "../auth/auth.controller";
 import {
   avatarUploadUrlSchema,
   changeEmailSchema,
   changePasswordSchema,
+  confirmEmailChangeSchema,
   deactivateSchema,
   mfaConfirmSchema,
   mfaDisableSchema,
+  oauthProviderParamSchema,
   updateProfileSchema,
   usernameCheckSchema,
 } from "./account.validator";
@@ -119,16 +123,28 @@ export async function changeEmail(
       validationError(res, parsed.error.issues[0]?.message ?? "Invalid input");
       return;
     }
-    const { email, otp, syncProfile } = parsed.data;
 
-    if (syncProfile) {
-      const user = await accountService.syncEmailChangeProfile(userId, email);
-      res.json({ data: { user } });
+    await accountService.requestEmailChange(userId, parsed.data.email, parsed.data.otp);
+    res.json({ data: { sent: true } });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function confirmEmailChange(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const parsed = confirmEmailChangeSchema.safeParse(req.body);
+    if (!parsed.success) {
+      validationError(res, "Invalid token");
       return;
     }
 
-    await accountService.authorizeEmailChange(userId, email, otp);
-    res.json({ data: { authorized: true } });
+    const user = await accountService.confirmEmailChange(parsed.data.token);
+    res.json({ data: { user } });
   } catch (err) {
     next(err);
   }
@@ -140,7 +156,7 @@ export async function changePassword(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const { userId, user } = req as AuthenticatedRequest;
+    const { userId } = req as AuthenticatedRequest;
     const parsed = changePasswordSchema.safeParse(req.body);
     if (!parsed.success) {
       validationError(res, parsed.error.issues[0]?.message ?? "Invalid input");
@@ -148,7 +164,6 @@ export async function changePassword(
     }
     await accountService.changePassword(
       userId,
-      user.email,
       parsed.data.currentPassword,
       parsed.data.newPassword,
       parsed.data.otp,
@@ -173,14 +188,30 @@ export async function getOAuth(
   }
 }
 
-export async function syncOAuth(
+export async function linkOAuth(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  await startOAuthLink(req, res, next);
+}
+
+export async function unlinkOAuth(
   req: Request,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
   try {
     const { userId } = req as AuthenticatedRequest;
-    const data = await accountService.syncOAuthAccounts(userId);
+    const parsed = oauthProviderParamSchema.safeParse(req.params.provider);
+    if (!parsed.success) {
+      validationError(res, "Invalid OAuth provider");
+      return;
+    }
+
+    const provider =
+      parsed.data === "google" ? UserOAuthProvider.Google : UserOAuthProvider.GitHub;
+    const data = await accountService.unlinkOAuthProvider(userId, provider);
     res.json({ data });
   } catch (err) {
     next(err);

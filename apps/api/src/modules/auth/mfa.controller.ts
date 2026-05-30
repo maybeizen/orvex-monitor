@@ -55,7 +55,7 @@ export async function getMfaStatus(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const { userId, user } = req as AuthenticatedRequest;
+    const { user } = req as AuthenticatedRequest;
     const mfaRequired = user.mfaEnabled;
     const mfaVerified = req.session.mfaVerified === true;
 

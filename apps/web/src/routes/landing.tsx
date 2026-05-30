@@ -426,14 +426,13 @@ function LandingFooter() {
               { label: "Twitter" },
               { label: "LinkedIn" },
             ].map(({ label }) => (
-              <a
+              <span
                 key={label}
-                href="#"
                 aria-label={label}
-                className="flex size-8 items-center justify-center rounded-lg text-slate-700 transition-colors hover:bg-white/5 hover:text-brand-400"
+                className="flex size-8 items-center justify-center rounded-lg text-slate-700"
               >
                 <ExternalLink size={13} />
-              </a>
+              </span>
             ))}
           </div>
         </div>

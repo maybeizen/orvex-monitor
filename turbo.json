@@ -33,9 +33,9 @@
     "clean": {
       "cache": false
     },
-    "db:types": {
+    "db:migrate": {
       "cache": false,
-      "outputs": ["src/types.ts"]
+      "outputs": ["src/migrations/**"]
     }
   }
 }

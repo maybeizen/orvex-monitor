@@ -6,7 +6,7 @@ import { Button, ErrorMessage, Input, useToast } from "@orvex/ui";
 
 import { AuthDivider, OAuthButtons } from "@/components/auth/OAuthButtons";
 import { AuthLayout } from "@/components/auth/AuthLayout";
-import { getAuthErrorMessage, signInWithEmail } from "@/lib/auth";
+import { getAuthErrorMessage, login } from "@/lib/auth-api";
 import { useAuthRedirectPath } from "@/hooks/use-auth-redirect";
 import { loginSchema } from "@/schemas/auth";
 import { useAuthStore } from "@/stores/auth.store";
@@ -15,7 +15,7 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const redirectPath = useAuthRedirectPath();
-  const completeAuthFlow = useAuthStore((s) => s.completeAuthFlow);
+  const setApiUser = useAuthStore((s) => s.setApiUser);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -42,8 +42,8 @@ export default function LoginPage() {
 
     setLoading(true);
     try {
-      await signInWithEmail(parsed.data.email, parsed.data.password);
-      const session = await completeAuthFlow();
+      const session = await login(parsed.data.email, parsed.data.password);
+      setApiUser(session.user);
       if (session.mfaRequired && !session.mfaVerified) {
         const redirect = encodeURIComponent(redirectPath);
         navigate(`/2fa?redirect=${redirect}`, { replace: true });
@@ -71,7 +71,7 @@ export default function LoginPage() {
         </>
       }
     >
-      <OAuthButtons onError={setError} />
+      <OAuthButtons />
       <AuthDivider />
 
       <form onSubmit={(e) => { void handleSubmit(e); }} className="space-y-4">

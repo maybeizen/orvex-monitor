@@ -1,22 +1,30 @@
-import { createClient } from "@supabase/supabase-js";
+import process from "node:process";
 
-import type { Database } from "./types";
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
 
-export function createSupabaseClient() {
-  const url = process.env["SUPABASE_URL"];
-  const key = process.env["SUPABASE_ANON_KEY"];
-  if (!url || !key) throw new Error("Missing SUPABASE_URL or SUPABASE_ANON_KEY");
-  return createClient<Database>(url, key);
+import * as schema from "./schema";
+
+let db: ReturnType<typeof drizzle<typeof schema>> | undefined;
+let sql: ReturnType<typeof postgres> | undefined;
+
+export function createDb() {
+  if (db) return db;
+
+  const url = process.env["DATABASE_URL"];
+  if (!url) throw new Error("Missing DATABASE_URL");
+
+  sql = postgres(url);
+  db = drizzle(sql, { schema });
+  return db;
 }
 
-export function createSupabaseServiceClient() {
-  const url = process.env["SUPABASE_URL"];
-  const key = process.env["SUPABASE_SERVICE_ROLE_KEY"];
-  if (!url || !key) throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
-  return createClient<Database>(url, key, {
-    auth: { persistSession: false },
-  });
-}
+export type Db = ReturnType<typeof createDb>;
 
-export type SupabaseClient = ReturnType<typeof createSupabaseClient>;
-export type SupabaseServiceClient = ReturnType<typeof createSupabaseServiceClient>;
+export async function closeDb(): Promise<void> {
+  if (sql) {
+    await sql.end();
+    sql = undefined;
+    db = undefined;
+  }
+}

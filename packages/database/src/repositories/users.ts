@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import type {
   PublicUser,
   UserAvatarType,
@@ -5,12 +7,28 @@ import type {
   UserStatus,
 } from "@orvex/types";
 import { isReservedUsername, isValidUsernameFormat } from "@orvex/types";
+import {
+  and,
+  eq,
+  getTableColumns,
+  gt,
+  ilike,
+  isNotNull,
+  isNull,
+  lte,
+  ne,
+} from "drizzle-orm";
 
-import { createSupabaseServiceClient } from "../client";
-import type { ProfileRow } from "../table-types";
+import { createDb } from "../client";
+import { profiles, userEmailVerifications, userPasswordResets } from "../schema";
+import type { ProfileAuthRow, ProfileRow } from "../table-types";
 
-const PROFILE_COLUMNS =
-  "id, email, full_name, avatar_url, timezone, first_name, last_name, username, avatar_type, global_role, status, is_banned, banned_at, email_verified, last_login_at, deleted_at, deletion_requested_at, deletion_scheduled_at, gravatar_email, mfa_enabled, created_at, updated_at";
+function getPublicProfileColumns() {
+  const { password_hash: _passwordHash, ...columns } = getTableColumns(profiles);
+  return columns;
+}
+
+const publicProfileColumns = getPublicProfileColumns();
 
 function mapProfileToPublicUser(row: ProfileRow): PublicUser {
   const user: PublicUser = {
@@ -44,7 +62,6 @@ export function isActiveUser(row: ProfileRow): boolean {
   return !row.is_banned && row.deleted_at === null && row.deletion_requested_at === null;
 }
 
-/** Allows session creation (excludes hard-deleted and banned only). */
 export function canAuthenticate(row: ProfileRow): boolean {
   return !row.is_banned && row.deleted_at === null;
 }
@@ -56,14 +73,25 @@ function generateUsernameBase(email: string, userId: string): string {
   return `${base}_${userId.replace(/-/g, "").slice(0, 8)}`;
 }
 
-export interface SupabaseAuthUserSnapshot {
-  id: string;
-  email?: string | undefined;
-  emailConfirmed?: boolean | undefined;
+function resolveUsername(email: string, userId: string, requested?: string): string {
+  const trimmed = requested?.trim();
+  if (
+    trimmed &&
+    isValidUsernameFormat(trimmed) &&
+    !isReservedUsername(trimmed)
+  ) {
+    return trimmed;
+  }
+  return generateUsernameBase(email, userId);
+}
+
+export interface CreateUserInput {
+  email: string;
+  passwordHash?: string | undefined;
   firstName?: string | undefined;
   lastName?: string | undefined;
-  fullName?: string | undefined;
   username?: string | undefined;
+  emailVerified?: boolean | undefined;
 }
 
 export interface UpdateProfileInput {
@@ -77,17 +105,26 @@ export interface UpdateProfileInput {
   email?: string;
 }
 
+export interface AuthTokenRow {
+  id: string;
+  user_id: string;
+}
+
 export const usersRepository = {
   async findById(id: string): Promise<ProfileRow | null> {
-    const client = createSupabaseServiceClient();
-    const { data, error } = await client
-      .from("profiles")
-      .select(PROFILE_COLUMNS)
-      .eq("id", id)
-      .maybeSingle();
+    const db = createDb();
+    const [row] = await db
+      .select(publicProfileColumns)
+      .from(profiles)
+      .where(eq(profiles.id, id))
+      .limit(1);
+    return row ?? null;
+  },
 
-    if (error) throw error;
-    return data as ProfileRow | null;
+  async findByEmail(email: string): Promise<ProfileAuthRow | null> {
+    const db = createDb();
+    const [row] = await db.select().from(profiles).where(eq(profiles.email, email)).limit(1);
+    return row ?? null;
   },
 
   async findPublicById(id: string): Promise<PublicUser | null> {
@@ -96,67 +133,86 @@ export const usersRepository = {
     return mapProfileToPublicUser(row);
   },
 
-  async updateLastLogin(id: string): Promise<void> {
-    const client = createSupabaseServiceClient();
-    const { error } = await client
-      .from("profiles")
-      .update({ last_login_at: new Date().toISOString() })
-      .eq("id", id);
+  async createUser(input: CreateUserInput): Promise<ProfileRow> {
+    const db = createDb();
+    const id = randomUUID();
+    const firstName = input.firstName ?? input.email.split("@")[0] ?? "user";
+    const lastName = input.lastName ?? "";
+    const username = resolveUsername(input.email, id, input.username);
 
-    if (error) throw error;
+    const [row] = await db
+      .insert(profiles)
+      .values({
+        id,
+        email: input.email,
+        password_hash: input.passwordHash ?? null,
+        first_name: firstName,
+        last_name: lastName,
+        username,
+        full_name: `${firstName} ${lastName}`.trim() || null,
+        email_verified: input.emailVerified ?? false,
+      })
+      .returning(publicProfileColumns);
+
+    if (!row) throw new Error("Failed to create user");
+    return row;
   },
 
-  /** Keep profiles.email_verified in sync when Supabase Auth confirms the address. */
+  async setPasswordHash(userId: string, passwordHash: string): Promise<void> {
+    const db = createDb();
+    await db
+      .update(profiles)
+      .set({ password_hash: passwordHash, updated_at: new Date().toISOString() })
+      .where(eq(profiles.id, userId));
+  },
+
+  async updateLastLogin(id: string): Promise<void> {
+    const db = createDb();
+    await db
+      .update(profiles)
+      .set({ last_login_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .where(eq(profiles.id, id));
+  },
+
+  async markEmailVerified(userId: string): Promise<ProfileRow | null> {
+    const db = createDb();
+    const [row] = await db
+      .update(profiles)
+      .set({ email_verified: true, updated_at: new Date().toISOString() })
+      .where(and(eq(profiles.id, userId), eq(profiles.email_verified, false)))
+      .returning(publicProfileColumns);
+    return row ?? null;
+  },
+
   async markEmailVerifiedIfNeeded(
     userId: string,
     emailConfirmed: boolean | undefined,
   ): Promise<ProfileRow | null> {
     if (!emailConfirmed) return null;
-
-    const client = createSupabaseServiceClient();
-    const { data, error } = await client
-      .from("profiles")
-      .update({ email_verified: true })
-      .eq("id", userId)
-      .eq("email_verified", false)
-      .select(PROFILE_COLUMNS)
-      .maybeSingle();
-
-    if (error) throw error;
-    return data as ProfileRow | null;
+    return this.markEmailVerified(userId);
   },
 
   async isUsernameAvailable(username: string, excludeUserId?: string): Promise<boolean> {
-    const client = createSupabaseServiceClient();
-    let query = client
-      .from("profiles")
-      .select("id")
-      .ilike("username", username)
-      .limit(1);
-
+    const db = createDb();
+    const conditions = [ilike(profiles.username, username)];
     if (excludeUserId) {
-      query = query.neq("id", excludeUserId);
+      conditions.push(ne(profiles.id, excludeUserId));
     }
 
-    const { data, error } = await query;
-    if (error) throw error;
-    return (data ?? []).length === 0;
+    const rows = await db
+      .select({ id: profiles.id })
+      .from(profiles)
+      .where(and(...conditions))
+      .limit(1);
+
+    return rows.length === 0;
   },
 
   async updateProfile(userId: string, input: UpdateProfileInput): Promise<ProfileRow> {
-    const client = createSupabaseServiceClient();
-    const patch: {
-      first_name?: string;
-      last_name?: string;
-      username?: string;
-      avatar_type?: UserAvatarType;
-      avatar_url?: string | null;
-      gravatar_email?: string | null;
-      status?: UserStatus;
-      email?: string;
-      email_verified?: boolean;
-      full_name?: string | null;
-    } = {};
+    const db = createDb();
+    const patch: Partial<typeof profiles.$inferInsert> = {
+      updated_at: new Date().toISOString(),
+    };
 
     if (input.firstName !== undefined) patch.first_name = input.firstName;
     if (input.lastName !== undefined) patch.last_name = input.lastName;
@@ -177,124 +233,156 @@ export const usersRepository = {
       patch.full_name = `${first} ${last}`.trim() || null;
     }
 
-    const { data, error } = await client
-      .from("profiles")
-      .update(patch)
-      .eq("id", userId)
-      .select(PROFILE_COLUMNS)
-      .single();
+    const [row] = await db
+      .update(profiles)
+      .set(patch)
+      .where(eq(profiles.id, userId))
+      .returning(publicProfileColumns);
 
-    if (error) throw error;
-    return data as ProfileRow;
+    if (!row) throw new Error("Profile not found");
+    return row;
   },
 
   async setMfaEnabled(userId: string, enabled: boolean): Promise<void> {
-    const client = createSupabaseServiceClient();
-    const { error } = await client
-      .from("profiles")
-      .update({ mfa_enabled: enabled })
-      .eq("id", userId);
-
-    if (error) throw error;
+    const db = createDb();
+    await db
+      .update(profiles)
+      .set({ mfa_enabled: enabled, updated_at: new Date().toISOString() })
+      .where(eq(profiles.id, userId));
   },
 
   async requestDeletion(userId: string): Promise<ProfileRow> {
-    const client = createSupabaseServiceClient();
+    const db = createDb();
     const scheduledAt = new Date();
     scheduledAt.setDate(scheduledAt.getDate() + 30);
 
-    const { data, error } = await client
-      .from("profiles")
-      .update({
+    const [row] = await db
+      .update(profiles)
+      .set({
         deletion_requested_at: new Date().toISOString(),
         deletion_scheduled_at: scheduledAt.toISOString(),
+        updated_at: new Date().toISOString(),
       })
-      .eq("id", userId)
-      .select(PROFILE_COLUMNS)
-      .single();
+      .where(eq(profiles.id, userId))
+      .returning(publicProfileColumns);
 
-    if (error) throw error;
-    return data as ProfileRow;
+    if (!row) throw new Error("Profile not found");
+    return row;
   },
 
   async reactivate(userId: string): Promise<ProfileRow> {
-    const client = createSupabaseServiceClient();
-    const { data, error } = await client
-      .from("profiles")
-      .update({
+    const db = createDb();
+    const [row] = await db
+      .update(profiles)
+      .set({
         deletion_requested_at: null,
         deletion_scheduled_at: null,
+        updated_at: new Date().toISOString(),
       })
-      .eq("id", userId)
-      .select(PROFILE_COLUMNS)
-      .single();
+      .where(eq(profiles.id, userId))
+      .returning(publicProfileColumns);
 
-    if (error) throw error;
-    return data as ProfileRow;
+    if (!row) throw new Error("Profile not found");
+    return row;
   },
 
   async findPendingDeletionDue(): Promise<ProfileRow[]> {
-    const client = createSupabaseServiceClient();
+    const db = createDb();
     const now = new Date().toISOString();
-    const { data, error } = await client
-      .from("profiles")
-      .select(PROFILE_COLUMNS)
-      .not("deletion_scheduled_at", "is", null)
-      .lte("deletion_scheduled_at", now)
-      .is("deleted_at", null);
-
-    if (error) throw error;
-    return (data ?? []) as ProfileRow[];
+    return db
+      .select(publicProfileColumns)
+      .from(profiles)
+      .where(
+        and(
+          isNotNull(profiles.deletion_scheduled_at),
+          lte(profiles.deletion_scheduled_at, now),
+          isNull(profiles.deleted_at),
+        ),
+      );
   },
 
   async markDeleted(userId: string): Promise<void> {
-    const client = createSupabaseServiceClient();
-    const { error } = await client
-      .from("profiles")
-      .update({ deleted_at: new Date().toISOString() })
-      .eq("id", userId);
-
-    if (error) throw error;
+    const db = createDb();
+    await db
+      .update(profiles)
+      .set({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .where(eq(profiles.id, userId));
   },
 
-  async syncFromSupabaseAuth(snapshot: SupabaseAuthUserSnapshot): Promise<ProfileRow> {
-    const existing = await this.findById(snapshot.id);
-    if (existing) return existing;
+  async createEmailVerificationToken(
+    userId: string,
+    token: string,
+    expiresAt: string,
+  ): Promise<void> {
+    const db = createDb();
+    await db.insert(userEmailVerifications).values({
+      user_id: userId,
+      token,
+      expires_at: expiresAt,
+    });
+  },
 
-    const email = snapshot.email ?? "";
-    const fullName = snapshot.fullName ?? "";
-    const firstName =
-      snapshot.firstName ??
-      (fullName ? fullName.split(" ")[0] : email.split("@")[0]) ??
-      "user";
-    const lastName =
-      snapshot.lastName ??
-      (fullName.includes(" ") ? fullName.slice(fullName.indexOf(" ") + 1) : "");
-    const requested = snapshot.username?.trim();
-    const username =
-      requested &&
-      isValidUsernameFormat(requested) &&
-      !isReservedUsername(requested)
-        ? requested
-        : generateUsernameBase(email, snapshot.id);
+  async findValidEmailVerificationToken(token: string): Promise<AuthTokenRow | null> {
+    const db = createDb();
+    const now = new Date().toISOString();
+    const [row] = await db
+      .select({ id: userEmailVerifications.id, user_id: userEmailVerifications.user_id })
+      .from(userEmailVerifications)
+      .where(
+        and(
+          eq(userEmailVerifications.token, token),
+          eq(userEmailVerifications.used, false),
+          gt(userEmailVerifications.expires_at, now),
+        ),
+      )
+      .limit(1);
+    return row ?? null;
+  },
 
-    const client = createSupabaseServiceClient();
-    const { data, error } = await client
-      .from("profiles")
-      .insert({
-        id: snapshot.id,
-        email,
-        full_name: fullName || null,
-        first_name: firstName,
-        last_name: lastName,
-        username,
-        email_verified: snapshot.emailConfirmed ?? false,
-      })
-      .select(PROFILE_COLUMNS)
-      .single();
+  async consumeEmailVerificationToken(tokenId: string): Promise<void> {
+    const db = createDb();
+    await db
+      .update(userEmailVerifications)
+      .set({ used: true })
+      .where(eq(userEmailVerifications.id, tokenId));
+  },
 
-    if (error) throw error;
-    return data as ProfileRow;
+  async createPasswordResetToken(
+    userId: string,
+    token: string,
+    expiresAt: string,
+  ): Promise<void> {
+    const db = createDb();
+    await db.insert(userPasswordResets).values({
+      user_id: userId,
+      token,
+      expires_at: expiresAt,
+    });
+  },
+
+  async findValidPasswordResetToken(token: string): Promise<AuthTokenRow | null> {
+    const db = createDb();
+    const now = new Date().toISOString();
+    const [row] = await db
+      .select({ id: userPasswordResets.id, user_id: userPasswordResets.user_id })
+      .from(userPasswordResets)
+      .where(
+        and(
+          eq(userPasswordResets.token, token),
+          eq(userPasswordResets.used, false),
+          gt(userPasswordResets.expires_at, now),
+        ),
+      )
+      .limit(1);
+    return row ?? null;
+  },
+
+  async consumePasswordResetToken(tokenId: string): Promise<void> {
+    const db = createDb();
+    await db
+      .update(userPasswordResets)
+      .set({ used: true })
+      .where(eq(userPasswordResets.id, tokenId));
   },
 };
 

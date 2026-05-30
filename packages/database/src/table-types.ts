@@ -1,10 +1,19 @@
-import type { Tables } from "./types";
+import type {
+  memberships,
+  organizations,
+  profiles,
+  userMfa,
+  userOauthAccounts,
+} from "./schema";
 
-/** Row shape for `public.profiles` — derived from generated Supabase types. */
-export type ProfileRow = Tables<"profiles">;
+export type ProfileRow = Omit<typeof profiles.$inferSelect, "password_hash">;
 
-/** Row shape for `public.organizations`. */
-export type OrganizationRow = Tables<"organizations">;
+export type ProfileAuthRow = typeof profiles.$inferSelect;
 
-/** Row shape for `public.memberships`. */
-export type MembershipRow = Tables<"memberships">;
+export type OrganizationRow = typeof organizations.$inferSelect;
+
+export type MembershipRow = typeof memberships.$inferSelect;
+
+export type MfaRow = typeof userMfa.$inferSelect;
+
+export type OAuthAccountRow = typeof userOauthAccounts.$inferSelect;

@@ -21,9 +21,13 @@ export const avatarUploadUrlSchema = z.object({
 export const changeEmailSchema = z.object({
   email: z.string().email(),
   otp: z.string().length(6).optional(),
-  /** Set after the browser calls supabase.auth.updateUser — syncs profile only. */
-  syncProfile: z.literal(true).optional(),
 });
+
+export const confirmEmailChangeSchema = z.object({
+  token: z.string().min(1),
+});
+
+export const oauthProviderParamSchema = z.enum(["google", "github"]);
 
 export const changePasswordSchema = z.object({
   currentPassword: z.string().min(1),

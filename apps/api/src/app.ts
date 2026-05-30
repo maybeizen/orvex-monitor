@@ -1,20 +1,24 @@
 import cors from "cors";
 import express from "express";
 import helmet from "helmet";
+import passport from "passport";
 
 import { createHttpLogger, createLogger } from "@orvex/logger";
 
+import { configurePassport } from "./config/passport";
 import { getEnv, loadEnv } from "./config/env";
 import { createSessionMiddleware } from "./config/session";
 import { createGlobalRateLimiter } from "./config/rate-limit";
+import { csrfProtection } from "./middlewares/csrf.middleware";
 import { errorHandler, notFoundHandler } from "./middlewares/error.middleware";
-import { sendEmailHookRouter } from "./modules/auth/send-email-hook.routes";
 import { apiRouter } from "./routes";
 
 export function createApp() {
   loadEnv();
   const env = getEnv();
   const logger = createLogger({ name: "api" });
+
+  configurePassport();
 
   const app = express();
 
@@ -27,15 +31,16 @@ export function createApp() {
     cors({
       origin: env.WEB_ORIGIN,
       credentials: true,
-      allowedHeaders: ["Authorization", "Content-Type"],
+      allowedHeaders: ["Authorization", "Content-Type", "X-XSRF-TOKEN"],
+      exposedHeaders: ["X-XSRF-TOKEN"],
     }),
   );
-  // Supabase Send Email hook must read the raw body for signature verification.
-  app.use("/api/v1/auth/hooks", sendEmailHookRouter);
 
   app.use(express.json({ limit: "1mb" }));
   app.use(createHttpLogger(logger));
   app.use(createSessionMiddleware());
+  app.use(passport.initialize());
+  app.use(csrfProtection);
   app.use(createGlobalRateLimiter());
 
   app.get("/health", (_req, res) => {

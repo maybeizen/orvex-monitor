@@ -6,7 +6,7 @@ import { Button, ErrorMessage, Input, useToast } from "@orvex/ui";
 
 import { AuthDivider, OAuthButtons } from "@/components/auth/OAuthButtons";
 import { AuthLayout } from "@/components/auth/AuthLayout";
-import { getAuthErrorMessage, signUpWithEmail } from "@/lib/auth";
+import { getAuthErrorMessage, register } from "@/lib/auth-api";
 import { useAuthRedirectPath } from "@/hooks/use-auth-redirect";
 import { signupSchema } from "@/schemas/auth";
 import { useAuthStore } from "@/stores/auth.store";
@@ -15,7 +15,7 @@ export default function SignupPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const redirectPath = useAuthRedirectPath();
-  const completeAuthFlow = useAuthStore((s) => s.completeAuthFlow);
+  const setApiUser = useAuthStore((s) => s.setApiUser);
 
   const [form, setForm] = useState({
     firstName: "",
@@ -52,12 +52,8 @@ export default function SignupPage() {
 
     setLoading(true);
     try {
-      const result = await signUpWithEmail(parsed.data);
-      if (result.session) {
-        await completeAuthFlow();
-        toast({ title: "Account created", variant: "success" });
-        navigate(redirectPath, { replace: true });
-      } else {
+      const result = await register(parsed.data);
+      if (result.emailVerificationRequired || !result.user) {
         toast({
           title: "Check your email",
           description: "Confirm your address to finish signing up.",
@@ -67,7 +63,11 @@ export default function SignupPage() {
           `/confirm-email?email=${encodeURIComponent(parsed.data.email)}`,
           { replace: true },
         );
+        return;
       }
+      setApiUser(result.user);
+      toast({ title: "Account created", variant: "success" });
+      navigate(redirectPath, { replace: true });
     } catch (err) {
       setError(getAuthErrorMessage(err));
     } finally {
@@ -88,7 +88,7 @@ export default function SignupPage() {
         </>
       }
     >
-      <OAuthButtons onError={setError} />
+      <OAuthButtons />
       <AuthDivider />
 
       <form onSubmit={(e) => { void handleSubmit(e); }} className="space-y-4">

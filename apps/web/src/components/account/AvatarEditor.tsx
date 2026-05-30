@@ -4,7 +4,7 @@ import { ImagePlus, Mail } from "lucide-react";
 import { UserAvatarType, type AccountSettings, type UserStatus } from "@orvex/types";
 import { Button, cn, Input, useToast } from "@orvex/ui";
 
-import { getAvatarSrc } from "@/lib/auth";
+import { getAvatarSrc } from "@/lib/user-avatar";
 import { StatusAvatar } from "./StatusAvatar";
 import { createAvatarUploadUrl } from "@/lib/account-api";
 

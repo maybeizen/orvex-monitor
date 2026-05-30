@@ -1,9 +1,6 @@
-import type { AccountSettings, ApiResponse, PublicUser } from "@orvex/types";
-import { UserAvatarType, UserOAuthProvider, UserStatus } from "@orvex/types";
+import type { AccountSettings, ApiResponse, PublicUser, UserAvatarType, UserOAuthProvider, UserStatus } from "@orvex/types";
 
 import { apiClient } from "./api-client";
-import { bridgeSupabaseSession } from "./auth-session";
-import { requestEmailChange } from "./auth";
 
 export interface AvatarUploadUrlResult {
   signedUrl: string;
@@ -50,21 +47,11 @@ export function createAvatarUploadUrl(contentType: string, extension: string) {
   });
 }
 
-export async function changeEmail(email: string, otp?: string) {
-  await apiClient.patch<ApiResponse<{ authorized: true }>>("/account/email", {
+export function changeEmail(email: string, otp?: string) {
+  return apiClient.patch<ApiResponse<{ user: PublicUser }>>("/account/email", {
     email,
     ...(otp ? { otp } : {}),
   });
-
-  await requestEmailChange(email);
-
-  const result = await apiClient.patch<ApiResponse<{ user: PublicUser }>>("/account/email", {
-    email,
-    syncProfile: true,
-  });
-
-  await bridgeSupabaseSession();
-  return result;
 }
 
 export function changePassword(

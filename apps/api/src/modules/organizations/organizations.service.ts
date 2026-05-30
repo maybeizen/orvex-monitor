@@ -9,18 +9,15 @@ import type {
 import { SubscriptionPlan as Plan } from "@orvex/types";
 
 import {
-  createSupabaseServiceClient,
   mapOrganizationRow,
   membershipsRepository,
   organizationsRepository,
 } from "@orvex/database";
+import { createOrgIconUploadUrl } from "@orvex/storage";
 
-import { getEnv } from "../../config/env";
 import { ErrorCodes } from "../../constants/http";
 import { AppError } from "../../utils/AppError";
 import type { CreateOrganizationBody } from "../../schemas/organization";
-
-const ORG_ICONS_BUCKET = "org-icons";
 
 export function slugify(value: string): string {
   return value
@@ -138,28 +135,5 @@ export async function createOrganizationIconUploadUrl(
   contentType: string,
   extension: string,
 ): Promise<IconUploadUrlResult> {
-  const env = getEnv();
-  const client = createSupabaseServiceClient();
-  const objectPath = `${userId}/${randomUUID()}.${extension}`;
-
-  const { data, error } = await client.storage
-    .from(ORG_ICONS_BUCKET)
-    .createSignedUploadUrl(objectPath, { upsert: false });
-
-  if (error || !data) {
-    throw new AppError(
-      error?.message ?? "Failed to create upload URL",
-      500,
-      ErrorCodes.INTERNAL,
-    );
-  }
-
-  const publicUrl = `${env.SUPABASE_URL}/storage/v1/object/public/${ORG_ICONS_BUCKET}/${objectPath}`;
-
-  return {
-    signedUrl: data.signedUrl,
-    token: data.token,
-    path: objectPath,
-    publicUrl,
-  };
+  return createOrgIconUploadUrl(userId, contentType, extension);
 }

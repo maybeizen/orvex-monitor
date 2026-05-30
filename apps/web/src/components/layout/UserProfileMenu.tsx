@@ -18,7 +18,7 @@ import { cn, Spinner } from "@orvex/ui";
 import { StatusAvatar } from "@/components/account/StatusAvatar";
 import { OrganizationIcon } from "@/components/organizations/OrganizationIcon";
 
-import { getAvatarSrc } from "@/lib/auth";
+import { getAvatarSrc } from "@/lib/user-avatar";
 import { orgPath } from "@/lib/org-paths";
 import { useOrganizations } from "@/hooks/use-organizations";
 import { useAuthStore } from "@/stores/auth.store";

@@ -56,7 +56,7 @@ export function RequireMfaDialog({
           <p className="mb-3 text-center text-xs font-medium uppercase tracking-wider text-slate-500">
             Authenticator code
           </p>
-          <MfaOtpInput value={otp} onChange={setOtp} disabled={loading} autoFocus />
+          <MfaOtpInput value={otp} onChange={setOtp} disabled={loading} />
         </div>
         {error ? <p className="text-center text-sm text-rose-400">{error}</p> : null}
       </Modal.Body>

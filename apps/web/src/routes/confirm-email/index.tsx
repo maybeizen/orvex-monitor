@@ -4,7 +4,7 @@ import { Mail } from "lucide-react";
 
 import { Button, useToast } from "@orvex/ui";
 
-import { resendSignupConfirmation } from "@/lib/auth";
+import { resendVerification } from "@/lib/auth-api";
 
 export default function ConfirmEmailPage() {
   const [searchParams] = useSearchParams();
@@ -20,7 +20,7 @@ export default function ConfirmEmailPage() {
     }
     setSending(true);
     try {
-      await resendSignupConfirmation(email);
+      await resendVerification(email);
       toast({ variant: "success", title: "Verification email sent" });
     } catch (err) {
       toast({
@@ -60,9 +60,7 @@ export default function ConfirmEmailPage() {
           </Button>
         ) : null}
         <p className="mt-4 text-xs leading-relaxed text-slate-600">
-          Not in your inbox? Check spam. If you still do not receive mail, your Supabase
-          project may be using the built-in mailer, which only delivers to organization
-          team addresses until you configure custom SMTP under Authentication → SMTP.
+          Not in your inbox? Check spam or wait a few minutes before requesting another email.
         </p>
         <Link
           to="/login"

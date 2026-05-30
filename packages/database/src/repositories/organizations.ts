@@ -4,12 +4,11 @@ import type {
   OrganizationStatus,
   SubscriptionPlan,
 } from "@orvex/types";
+import { asc, eq } from "drizzle-orm";
 
-import { createSupabaseServiceClient } from "../client";
+import { createDb } from "../client";
+import { memberships, organizations } from "../schema";
 import type { OrganizationRow } from "../table-types";
-
-const ORG_COLUMNS =
-  "id, name, slug, icon, owner_id, status, is_personal, plan, customer_id, subscription_id, auto_renew, plan_expires_at, created_at, updated_at";
 
 export function mapOrganizationRow(row: OrganizationRow): Organization {
   const org: Organization = {
@@ -35,32 +34,25 @@ export function mapOrganizationRow(row: OrganizationRow): Organization {
 
 export const organizationsRepository = {
   async listForUser(userId: string): Promise<Organization[]> {
-    const client = createSupabaseServiceClient();
-    const { data, error } = await client
-      .from("memberships")
-      .select(`organizations (${ORG_COLUMNS})`)
-      .eq("user_id", userId)
-      .order("joined_at", { ascending: true });
+    const db = createDb();
+    const rows = await db
+      .select({ organization: organizations })
+      .from(memberships)
+      .innerJoin(organizations, eq(memberships.organization_id, organizations.id))
+      .where(eq(memberships.user_id, userId))
+      .orderBy(asc(memberships.joined_at));
 
-    if (error) throw error;
-
-    const rows = (data ?? [])
-      .map((entry) => entry.organizations as OrganizationRow | null)
-      .filter((row): row is OrganizationRow => row !== null);
-
-    return rows.map(mapOrganizationRow);
+    return rows.map((entry) => mapOrganizationRow(entry.organization));
   },
 
   async findBySlug(slug: string): Promise<OrganizationRow | null> {
-    const client = createSupabaseServiceClient();
-    const { data, error } = await client
-      .from("organizations")
-      .select(ORG_COLUMNS)
-      .eq("slug", slug)
-      .maybeSingle();
-
-    if (error) throw error;
-    return data as OrganizationRow | null;
+    const db = createDb();
+    const [row] = await db
+      .select()
+      .from(organizations)
+      .where(eq(organizations.slug, slug))
+      .limit(1);
+    return row ?? null;
   },
 
   async isSlugAvailable(slug: string): Promise<boolean> {
@@ -72,36 +64,32 @@ export const organizationsRepository = {
     input: CreateOrganizationInput,
     ownerId: string,
   ): Promise<OrganizationRow> {
-    const client = createSupabaseServiceClient();
+    const db = createDb();
 
-    const { data: org, error: orgError } = await client
-      .from("organizations")
-      .insert({
-        name: input.name,
-        slug: input.slug,
-        icon: input.icon ?? null,
-        owner_id: ownerId,
-        is_personal: input.isPersonal ?? false,
-        plan: input.plan ?? "free",
-        status: "active",
-      })
-      .select(ORG_COLUMNS)
-      .single();
+    return db.transaction(async (tx) => {
+      const [org] = await tx
+        .insert(organizations)
+        .values({
+          name: input.name,
+          slug: input.slug,
+          icon: input.icon ?? null,
+          owner_id: ownerId,
+          is_personal: input.isPersonal ?? false,
+          plan: input.plan ?? "free",
+          status: "active",
+        })
+        .returning();
 
-    if (orgError) throw orgError;
+      if (!org) throw new Error("Failed to create organization");
 
-    const { error: membershipError } = await client.from("memberships").insert({
-      organization_id: org.id,
-      user_id: ownerId,
-      role: "owner",
-      is_owner: true,
+      await tx.insert(memberships).values({
+        organization_id: org.id,
+        user_id: ownerId,
+        role: "owner",
+        is_owner: true,
+      });
+
+      return org;
     });
-
-    if (membershipError) {
-      await client.from("organizations").delete().eq("id", org.id);
-      throw membershipError;
-    }
-
-    return org as OrganizationRow;
   },
 };

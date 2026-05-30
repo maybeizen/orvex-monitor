@@ -1,14 +1,13 @@
+import process from "node:process";
+
 import { z } from "zod";
 
 const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   LOG_LEVEL: z.string().default("info"),
-  SUPABASE_URL: z.string().url(),
-  SUPABASE_ANON_KEY: z.string().min(1),
-  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
-  UPSTASH_REDIS_REST_URL: z.string().url(),
-  UPSTASH_REDIS_REST_TOKEN: z.string().min(1),
+  DATABASE_URL: z.string().min(1),
+  REDIS_URL: z.string().min(1),
   WEB_ORIGIN: z.string().url().default("http://localhost:5173"),
   SESSION_SECRET: z.string().min(32),
   SESSION_COOKIE_NAME: z.string().min(1).default("orvex.sid"),
@@ -17,10 +16,29 @@ const envSchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((v) => v === "true"),
-  RESEND_API_KEY: z.string().min(1).optional(),
-  EMAIL_FROM: z.string().default("Orvex <onboarding@resend.dev>"),
-  /** From Supabase Auth → Hooks → Send Email → Generate secret (v1,whsec_...) */
-  SEND_EMAIL_HOOK_SECRET: z.string().min(1).optional(),
+  SMTP_HOST: z.string().min(1),
+  SMTP_PORT: z.coerce.number().int().positive(),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  SMTP_SECURE: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
+  EMAIL_FROM: z.string().min(1).default("Orvex <noreply@orvex.app>"),
+  STORAGE_DRIVER: z.enum(["local", "s3"]).default("local"),
+  STORAGE_LOCAL_PATH: z.string().default("./uploads"),
+  STORAGE_PUBLIC_BASE_URL: z.string().optional(),
+  S3_BUCKET: z.string().optional(),
+  S3_REGION: z.string().optional(),
+  S3_ACCESS_KEY: z.string().optional(),
+  S3_SECRET_KEY: z.string().optional(),
+  S3_ENDPOINT: z.string().optional(),
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  GITHUB_CLIENT_ID: z.string().optional(),
+  GITHUB_CLIENT_SECRET: z.string().optional(),
+  OAUTH_CALLBACK_BASE_URL: z.string().url().default("http://localhost:3000"),
+  CSRF_SECRET: z.string().min(32).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -43,4 +61,9 @@ export function loadEnv(): Env {
 export function getEnv(): Env {
   if (!cached) throw new Error("Environment not loaded — call loadEnv() first");
   return cached;
+}
+
+export function getCsrfSecret(): string {
+  const env = getEnv();
+  return env.CSRF_SECRET ?? env.SESSION_SECRET;
 }

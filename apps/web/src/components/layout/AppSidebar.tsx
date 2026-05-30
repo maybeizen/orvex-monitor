@@ -63,7 +63,6 @@ export function AppSidebar({ orgSlug }: AppSidebarProps) {
     <nav
       id="app-sidebar-nav"
       aria-label="App navigation"
-      aria-expanded={expanded}
         className={cn(
         "relative z-10 flex shrink-0 flex-col border-r border-white/6 bg-[#0a0f1e] py-3 transition-[width] duration-200 ease-out",
         expanded ? "w-52 px-3" : "w-14 px-2",

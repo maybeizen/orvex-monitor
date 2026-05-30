@@ -9,6 +9,13 @@ const MIME_TO_EXTENSION: Record<string, "png" | "jpg" | "jpeg" | "webp" | "svg">
   "image/svg+xml": "svg",
 };
 
+interface IconUploadResult {
+  signedUrl: string;
+  token: string;
+  path: string;
+  publicUrl: string;
+}
+
 export async function uploadOrganizationIcon(file: File): Promise<string> {
   const contentType = file.type as keyof typeof MIME_TO_EXTENSION;
   const extension = MIME_TO_EXTENSION[contentType];
@@ -20,25 +27,13 @@ export async function uploadOrganizationIcon(file: File): Promise<string> {
     throw new Error("Image must be 512KB or smaller.");
   }
 
-  let upload: ApiResponse<{
-    signedUrl: string;
-    token: string;
-    path: string;
-    publicUrl: string;
-  }>;
+  let upload: ApiResponse<IconUploadResult>;
 
   try {
-    upload = await apiClient.post<
-      ApiResponse<{
-        signedUrl: string;
-        token: string;
-        path: string;
-        publicUrl: string;
-      }>
-    >("/organizations/icon-upload-url", {
-      contentType,
-      extension,
-    });
+    upload = await apiClient.post<ApiResponse<IconUploadResult>>(
+      "/organizations/icon-upload-url",
+      { contentType, extension },
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : "Upload failed";
     if (message.includes("404") || message.toLowerCase().includes("not found")) {
@@ -49,15 +44,24 @@ export async function uploadOrganizationIcon(file: File): Promise<string> {
     throw err instanceof Error ? err : new Error(message);
   }
 
-  const response = await fetch(upload.data.signedUrl, {
-    method: "PUT",
-    headers: { "Content-Type": contentType },
-    body: file,
-  });
+  if (upload.data.signedUrl) {
+    const response = await fetch(upload.data.signedUrl, {
+      method: "PUT",
+      headers: { "Content-Type": contentType },
+      body: file,
+    });
 
-  if (!response.ok) {
-    throw new Error(
-      "Failed to upload icon to storage. Confirm the org-icons bucket exists (see docs/org-icons-storage.md).",
+    if (!response.ok) {
+      throw new Error("Failed to upload icon to storage.");
+    }
+  } else {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("path", upload.data.path);
+    formData.append("token", upload.data.token);
+    await apiClient.upload<ApiResponse<{ publicUrl: string }>>(
+      "/organizations/icon-upload",
+      formData,
     );
   }
 

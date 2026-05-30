@@ -12,4 +12,10 @@ export default tseslint.config(
       "n/no-missing-import": "off",
     },
   },
+  {
+    files: ["**/express.d.ts"],
+    rules: {
+      "@typescript-eslint/no-empty-object-type": "off",
+    },
+  },
 );

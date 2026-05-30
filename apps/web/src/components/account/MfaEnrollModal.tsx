@@ -39,7 +39,7 @@ const MfaVerifyStep = memo(function MfaVerifyStep({
         <p className="mb-3 text-center text-xs font-medium uppercase tracking-wider text-slate-500">
           Authenticator code
         </p>
-        <MfaOtpInput value={otp} onChange={onOtpChange} disabled={loading} autoFocus />
+        <MfaOtpInput value={otp} onChange={onOtpChange} disabled={loading} />
       </div>
       <div className="rounded-xl border border-white/8 bg-slate-950/60 p-4">
         <MfaPasswordField
@@ -101,7 +101,7 @@ export function MfaEnrollModal({ open, onClose, onComplete }: MfaEnrollModalProp
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, [open, toast]);
 
   async function handleConfirm() {
     if (otp.length < 6 || !password) return;
@@ -203,8 +203,9 @@ export function MfaEnrollModal({ open, onClose, onComplete }: MfaEnrollModalProp
               <p className="text-center text-xs font-medium text-slate-500">
                 Can&apos;t scan? Enter this key manually
               </p>
-              <p
-                className={`mt-2 break-all text-center font-mono text-sm tracking-wider text-slate-200 transition-all duration-200 ${
+              <button
+                type="button"
+                className={`mt-2 w-full break-all text-center font-mono text-sm tracking-wider text-slate-200 transition-all duration-200 ${
                   keyRevealed
                     ? "blur-none"
                     : "cursor-default select-none blur-md hover:blur-none"
@@ -214,10 +215,9 @@ export function MfaEnrollModal({ open, onClose, onComplete }: MfaEnrollModalProp
                 onMouseLeave={() => { setKeyRevealed(false); }}
                 onFocus={() => { setKeyRevealed(true); }}
                 onBlur={() => { setKeyRevealed(false); }}
-                tabIndex={0}
               >
                 {manualSecret || "—"}
-              </p>
+              </button>
               <p className="mt-2 text-center text-[10px] text-slate-600">
                 Hover or focus to reveal
               </p>

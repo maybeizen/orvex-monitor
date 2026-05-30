@@ -28,8 +28,9 @@ coverage/
 # Bun
 bun.lock
 
+# Uploads (local storage driver)
+uploads/
+
 # Claude
 skills-lock.json
 .superpowers/
-
-supabase/

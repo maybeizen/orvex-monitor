@@ -23,7 +23,7 @@ export enum UserOAuthProvider {
   GitHub = "github",
 }
 
-/** Internal profile shape — credentials live in Supabase Auth, not Postgres. */
+/** Internal profile shape — password hash and tokens live in Postgres, never exposed via API. */
 export interface User {
   id: string;
   email: string;

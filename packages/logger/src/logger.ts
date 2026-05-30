@@ -1,3 +1,5 @@
+import process from "node:process";
+
 import winston from "winston";
 
 export interface LoggerOptions {

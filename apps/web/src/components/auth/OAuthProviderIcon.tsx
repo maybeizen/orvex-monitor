@@ -1,6 +1,6 @@
-import type { Provider } from "@supabase/supabase-js";
-
 import { cn } from "@orvex/ui";
+
+import type { OAuthProvider } from "@/lib/auth-api";
 
 function GoogleIcon({ className }: { className?: string }) {
   return (
@@ -40,7 +40,7 @@ export function OAuthProviderIcon({
   provider,
   className,
 }: {
-  provider: Provider;
+  provider: OAuthProvider;
   className?: string;
 }) {
   if (provider === "google") {

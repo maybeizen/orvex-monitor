@@ -12,6 +12,8 @@ import SignupPage from "./routes/auth/signup";
 import ForgotPasswordPage from "./routes/auth/forgot-password";
 import TwoFactorPage from "./routes/auth/two-factor";
 import AuthCallbackPage from "./routes/auth/callback";
+import AuthVerifyEmailPage from "./routes/auth/verify-email";
+import ResetPasswordPage from "./routes/auth/reset-password";
 import AppIndexRedirect from "./routes/app-index";
 import OrganizationsPage from "./routes/organizations/index";
 import DashboardPage from "./routes/index";
@@ -37,6 +39,8 @@ const router = createBrowserRouter([
   { path: "/forgot-password", element: <ForgotPasswordPage /> },
   { path: "/2fa", element: <TwoFactorPage /> },
   { path: "/auth/callback", element: <AuthCallbackPage /> },
+  { path: "/auth/verify-email", element: <AuthVerifyEmailPage /> },
+  { path: "/auth/reset-password", element: <ResetPasswordPage /> },
   {
     path: "/app",
     children: [

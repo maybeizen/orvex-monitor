@@ -1,0 +1,2 @@
+CREATE UNIQUE INDEX "profiles_email_unique" ON "profiles" USING btree ("email");--> statement-breakpoint
+CREATE UNIQUE INDEX "idx_profiles_username_lower" ON "profiles" USING btree (lower("username"));

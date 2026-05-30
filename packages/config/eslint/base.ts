@@ -8,10 +8,14 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   importX.flatConfigs.recommended,
-  importX.flatConfigs.typescript,
   {
     plugins: { unicorn },
     rules: {
+      "import-x/named": "off",
+      "import-x/namespace": "off",
+      "import-x/default": "off",
+      "import-x/no-named-as-default": "off",
+      "import-x/no-named-as-default-member": "off",
       "unicorn/prefer-module": "error",
       "unicorn/prefer-node-protocol": "error",
       "unicorn/no-array-for-each": "error",
@@ -22,7 +26,10 @@ export default tseslint.config(
         "error",
         { prefer: "type-imports", fixStyle: "separate-type-imports" },
       ],
-      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
       "@typescript-eslint/no-explicit-any": "warn",
       "import-x/no-cycle": "error",
       "import-x/no-duplicates": "error",

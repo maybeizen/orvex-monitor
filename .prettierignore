@@ -3,4 +3,4 @@ dist/
 .turbo/
 bun.lock
 *.gen.ts
-supabase/.temp/
+uploads/

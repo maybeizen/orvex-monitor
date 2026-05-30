@@ -15,15 +15,19 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "clean": "rm -rf dist",
-    "db:types": "bunx supabase gen types typescript --local > src/types.ts"
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push"
   },
   "dependencies": {
     "@orvex/types": "workspace:*",
-    "@supabase/supabase-js": "^2.49.5"
+    "drizzle-orm": "^0.44.2",
+    "postgres": "^3.4.7"
   },
   "devDependencies": {
     "@orvex/config": "workspace:*",
     "@types/node": "^22.0.0",
+    "drizzle-kit": "^0.31.1",
     "tsdown": "^0.22.0",
     "typescript": "^5.8.3"
   }

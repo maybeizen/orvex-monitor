@@ -1,29 +1,34 @@
-import { randomUUID } from "node:crypto";
-
-import type { AccountSettings } from "@orvex/types";
-import { UserOAuthProvider, isReservedUsername } from "@orvex/types";
+import type { AccountSettings, UserOAuthProvider } from "@orvex/types";
+import { isReservedUsername } from "@orvex/types";
 import {
-  createSupabaseServiceClient,
   mapProfileToPublicUser,
   oauthRepository,
   usersRepository,
   type UpdateProfileInput,
 } from "@orvex/database";
 import { mfaRepository } from "@orvex/database";
+import { createAvatarUploadUrl as createStorageAvatarUploadUrl } from "@orvex/storage";
+import {
+  sendAccountDeactivationEmail,
+  sendEmailChangeEmail,
+} from "@orvex/mailer";
 
-import { getEnv } from "../../config/env";
 import { AppError } from "../../utils/AppError";
 import { ErrorCodes } from "../../constants/http";
 import {
+  createEmailChangeToken,
+  hashPassword,
+  parseEmailChangeToken,
+  unlinkOAuthAccount,
+  verifyPassword,
+} from "../auth/auth.service";
+import {
   disableMfa,
   requireMfaIfEnabled,
-  sendDeactivationEmail,
   startMfaEnroll,
   confirmMfaEnroll,
   verifyUserPassword,
 } from "./mfa-account.service";
-
-const AVATARS_BUCKET = "avatars";
 
 function assertNotPendingDeletion(profile: { deletion_requested_at: string | null }) {
   if (profile.deletion_requested_at) {
@@ -43,30 +48,13 @@ export async function getAccountSettings(userId: string): Promise<AccountSetting
 
   const oauth = await oauthRepository.listByUserId(userId);
   const mfa = await mfaRepository.findByUserId(userId);
-  const service = createSupabaseServiceClient();
-  const { data: authUser } = await service.auth.admin.getUserById(userId);
-
-  const identities = authUser.user?.identities ?? [];
-  const linkedFromAuth = identities
-    .map((i) => i.provider)
-    .filter((p): p is "google" | "github" => p === "google" || p === "github");
-
-  const linkedProviders = [
-    ...new Set([
-      ...oauth.map((o) => o.provider as UserOAuthProvider),
-      ...linkedFromAuth,
-    ]),
-  ] as UserOAuthProvider[];
-
-  const hasPassword =
-    identities.some((i) => i.provider === "email") ||
-    (authUser.user?.app_metadata?.provider === "email");
+  const authProfile = await usersRepository.findByEmail(profile.email);
 
   return {
     ...mapProfileToPublicUser(profile),
-    linkedProviders,
+    linkedProviders: oauth.map((o) => o.provider as UserOAuthProvider),
     mfaEnrolled: mfa?.enabled ?? false,
-    hasPassword: hasPassword || identities.length === 0,
+    hasPassword: Boolean(authProfile?.password_hash),
   };
 }
 
@@ -99,34 +87,15 @@ export async function checkUsername(username: string, userId: string) {
   return { available, reserved: false as const };
 }
 
-export async function createAvatarUploadUrl(userId: string, contentType: string, extension: string) {
-  const env = getEnv();
-  const client = createSupabaseServiceClient();
-  const objectPath = `${userId}/${randomUUID()}.${extension}`;
-
-  const { data, error } = await client.storage
-    .from(AVATARS_BUCKET)
-    .createSignedUploadUrl(objectPath, { upsert: false });
-
-  if (error || !data) {
-    throw new AppError(
-      error?.message ?? "Failed to create upload URL",
-      500,
-      ErrorCodes.INTERNAL,
-    );
-  }
-
-  const publicUrl = `${env.SUPABASE_URL}/storage/v1/object/public/${AVATARS_BUCKET}/${objectPath}`;
-
-  return {
-    signedUrl: data.signedUrl,
-    token: data.token,
-    path: objectPath,
-    publicUrl,
-  };
+export async function createAvatarUploadUrl(
+  userId: string,
+  contentType: string,
+  extension: string,
+) {
+  return createStorageAvatarUploadUrl(userId, contentType, extension);
 }
 
-export async function authorizeEmailChange(
+export async function requestEmailChange(
   userId: string,
   newEmail: string,
   otp?: string | undefined,
@@ -138,23 +107,50 @@ export async function authorizeEmailChange(
   assertNotPendingDeletion(profile);
   await requireMfaIfEnabled(profile, otp);
 
-  if (newEmail.toLowerCase() === profile.email.toLowerCase()) {
+  const normalized = newEmail.toLowerCase();
+  if (normalized === profile.email.toLowerCase()) {
     throw new AppError("New email must be different from your current email", 400, ErrorCodes.VALIDATION);
   }
+
+  const existing = await usersRepository.findByEmail(normalized);
+  if (existing && existing.id !== userId) {
+    throw new AppError("Email is already in use", 409, ErrorCodes.CONFLICT);
+  }
+
+  const currentToken = createEmailChangeToken(userId, normalized);
+  const newToken = createEmailChangeToken(userId, normalized);
+
+  await sendEmailChangeEmail({
+    email: profile.email,
+    token: currentToken,
+    kind: "current",
+  });
+  await sendEmailChangeEmail({
+    email: normalized,
+    token: newToken,
+    kind: "new",
+  });
 }
 
-export async function syncEmailChangeProfile(userId: string, newEmail: string) {
-  await usersRepository.updateProfile(userId, { email: newEmail });
-  const updated = await usersRepository.findById(userId);
-  if (!updated) {
-    throw new AppError("User not found", 404, ErrorCodes.NOT_FOUND);
+export async function confirmEmailChange(token: string) {
+  const parsed = parseEmailChangeToken(token);
+  if (!parsed) {
+    throw new AppError("Invalid or expired email change token", 400, ErrorCodes.VALIDATION);
   }
-  return mapProfileToPublicUser(updated);
+
+  const existing = await usersRepository.findByEmail(parsed.newEmail);
+  if (existing && existing.id !== parsed.userId) {
+    throw new AppError("Email is already in use", 409, ErrorCodes.CONFLICT);
+  }
+
+  const row = await usersRepository.updateProfile(parsed.userId, {
+    email: parsed.newEmail,
+  });
+  return mapProfileToPublicUser(row);
 }
 
 export async function changePassword(
   userId: string,
-  email: string,
   currentPassword: string,
   newPassword: string,
   otp?: string | undefined,
@@ -166,62 +162,23 @@ export async function changePassword(
   assertNotPendingDeletion(profile);
   await requireMfaIfEnabled(profile, otp);
 
-  const valid = await verifyUserPassword(email, currentPassword);
+  const authProfile = await usersRepository.findByEmail(profile.email);
+  const valid = await verifyPassword(authProfile?.password_hash, currentPassword);
   if (!valid) {
     throw new AppError("Incorrect current password", 401, ErrorCodes.UNAUTHORIZED);
   }
 
-  const service = createSupabaseServiceClient();
-  const { error } = await service.auth.admin.updateUserById(userId, {
-    password: newPassword,
-  });
-
-  if (error) {
-    throw new AppError(error.message, 400, ErrorCodes.VALIDATION);
-  }
-}
-
-export async function syncOAuthAccounts(userId: string) {
-  const service = createSupabaseServiceClient();
-  const { data: authUser, error } = await service.auth.admin.getUserById(userId);
-  if (error || !authUser.user) {
-    throw new AppError("Failed to load auth user", 500, ErrorCodes.INTERNAL);
-  }
-
-  const identities = authUser.user.identities ?? [];
-  const providers: UserOAuthProvider[] = [];
-
-  for (const identity of identities) {
-    if (identity.provider === "google") {
-      await oauthRepository.upsert(
-        userId,
-        UserOAuthProvider.Google,
-        identity.identity_id ?? identity.id,
-      );
-      providers.push(UserOAuthProvider.Google);
-    } else if (identity.provider === "github") {
-      await oauthRepository.upsert(
-        userId,
-        UserOAuthProvider.GitHub,
-        identity.identity_id ?? identity.id,
-      );
-      providers.push(UserOAuthProvider.GitHub);
-    }
-  }
-
-  const stored = await oauthRepository.listByUserId(userId);
-  for (const row of stored) {
-    if (!providers.includes(row.provider as UserOAuthProvider)) {
-      await oauthRepository.remove(userId, row.provider as UserOAuthProvider);
-    }
-  }
-
-  return { linkedProviders: providers };
+  const passwordHash = await hashPassword(newPassword);
+  await usersRepository.setPasswordHash(userId, passwordHash);
 }
 
 export async function getLinkedOAuth(userId: string) {
   const rows = await oauthRepository.listByUserId(userId);
   return { linkedProviders: rows.map((r) => r.provider as UserOAuthProvider) };
+}
+
+export async function unlinkOAuthProvider(userId: string, provider: UserOAuthProvider) {
+  return unlinkOAuthAccount(userId, provider);
 }
 
 export async function deactivateAccount(
@@ -248,7 +205,7 @@ export async function deactivateAccount(
 
   const row = await usersRepository.requestDeletion(userId);
   const scheduledAt = new Date(row.deletion_scheduled_at ?? Date.now());
-  await sendDeactivationEmail(email, scheduledAt);
+  await sendAccountDeactivationEmail({ email, scheduledAt });
 
   return mapProfileToPublicUser(row);
 }

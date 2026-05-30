@@ -1,25 +1,16 @@
 import type { UserOAuthProvider } from "@orvex/types";
+import { and, eq } from "drizzle-orm";
 
-import { createSupabaseServiceClient } from "../client";
+import { createDb } from "../client";
+import { userOauthAccounts } from "../schema";
+import type { OAuthAccountRow } from "../table-types";
 
-export interface OAuthAccountRow {
-  id: string;
-  user_id: string;
-  provider: UserOAuthProvider;
-  provider_id: string;
-  created_at: string;
-}
+export type { OAuthAccountRow };
 
 export const oauthRepository = {
   async listByUserId(userId: string): Promise<OAuthAccountRow[]> {
-    const client = createSupabaseServiceClient();
-    const { data, error } = await client
-      .from("user_oauth_accounts")
-      .select("id, user_id, provider, provider_id, created_at")
-      .eq("user_id", userId);
-
-    if (error) throw error;
-    return (data ?? []) as OAuthAccountRow[];
+    const db = createDb();
+    return db.select().from(userOauthAccounts).where(eq(userOauthAccounts.user_id, userId));
   },
 
   async upsert(
@@ -27,50 +18,70 @@ export const oauthRepository = {
     provider: UserOAuthProvider,
     providerId: string,
   ): Promise<void> {
-    const client = createSupabaseServiceClient();
-    const existing = await client
-      .from("user_oauth_accounts")
-      .select("id")
-      .eq("user_id", userId)
-      .eq("provider", provider)
-      .maybeSingle();
+    const db = createDb();
+    const [existing] = await db
+      .select({ id: userOauthAccounts.id })
+      .from(userOauthAccounts)
+      .where(
+        and(
+          eq(userOauthAccounts.user_id, userId),
+          eq(userOauthAccounts.provider, provider),
+        ),
+      )
+      .limit(1);
 
-    if (existing.error) throw existing.error;
-
-    if (existing.data) {
-      const { error } = await client
-        .from("user_oauth_accounts")
-        .update({ provider_id: providerId })
-        .eq("user_id", userId)
-        .eq("provider", provider);
-      if (error) throw error;
+    if (existing) {
+      await db
+        .update(userOauthAccounts)
+        .set({ provider_id: providerId })
+        .where(
+          and(
+            eq(userOauthAccounts.user_id, userId),
+            eq(userOauthAccounts.provider, provider),
+          ),
+        );
       return;
     }
 
-    const { error } = await client.from("user_oauth_accounts").insert({
+    await db.insert(userOauthAccounts).values({
       user_id: userId,
       provider,
       provider_id: providerId,
     });
-
-    if (error) throw error;
   },
 
   async remove(userId: string, provider: UserOAuthProvider): Promise<void> {
-    const client = createSupabaseServiceClient();
-    const { error } = await client
-      .from("user_oauth_accounts")
-      .delete()
-      .eq("user_id", userId)
-      .eq("provider", provider);
-
-    if (error) throw error;
+    const db = createDb();
+    await db
+      .delete(userOauthAccounts)
+      .where(
+        and(
+          eq(userOauthAccounts.user_id, userId),
+          eq(userOauthAccounts.provider, provider),
+        ),
+      );
   },
 
   async removeAllForUser(userId: string): Promise<void> {
-    const client = createSupabaseServiceClient();
-    const { error } = await client.from("user_oauth_accounts").delete().eq("user_id", userId);
+    const db = createDb();
+    await db.delete(userOauthAccounts).where(eq(userOauthAccounts.user_id, userId));
+  },
 
-    if (error) throw error;
+  async findByProviderAndProviderId(
+    provider: UserOAuthProvider,
+    providerId: string,
+  ): Promise<OAuthAccountRow | null> {
+    const db = createDb();
+    const [row] = await db
+      .select()
+      .from(userOauthAccounts)
+      .where(
+        and(
+          eq(userOauthAccounts.provider, provider),
+          eq(userOauthAccounts.provider_id, providerId),
+        ),
+      )
+      .limit(1);
+    return row ?? null;
   },
 };

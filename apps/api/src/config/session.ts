@@ -1,7 +1,7 @@
 import session from "express-session";
 
 import { getEnv } from "./env";
-import { UpstashSessionStore } from "../lib/upstash-session-store";
+import { createRedisSessionStore } from "../lib/redis-session-store";
 
 export function createSessionMiddleware() {
   const env = getEnv();
@@ -10,7 +10,7 @@ export function createSessionMiddleware() {
     secret: env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
-    store: new UpstashSessionStore(),
+    store: createRedisSessionStore(),
     cookie: {
       httpOnly: true,
       secure: env.NODE_ENV === "production",

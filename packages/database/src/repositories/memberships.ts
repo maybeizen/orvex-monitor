@@ -1,8 +1,8 @@
-import { createSupabaseServiceClient } from "../client";
-import type { MembershipRow } from "../table-types";
+import { and, eq, inArray } from "drizzle-orm";
 
-const MEMBERSHIP_COLUMNS =
-  "id, organization_id, user_id, invited_by, joined_at, role, permissions_override, is_owner";
+import { createDb } from "../client";
+import { memberships } from "../schema";
+import type { MembershipRow } from "../table-types";
 
 export const membershipsRepository = {
   async countByOrganizationIds(
@@ -10,18 +10,15 @@ export const membershipsRepository = {
   ): Promise<Record<string, number>> {
     if (organizationIds.length === 0) return {};
 
-    const client = createSupabaseServiceClient();
-    const { data, error } = await client
-      .from("memberships")
-      .select("organization_id")
-      .in("organization_id", organizationIds);
-
-    if (error) throw error;
+    const db = createDb();
+    const rows = await db
+      .select({ organization_id: memberships.organization_id })
+      .from(memberships)
+      .where(inArray(memberships.organization_id, organizationIds));
 
     const counts: Record<string, number> = {};
-    for (const row of data ?? []) {
-      const orgId = row.organization_id as string;
-      counts[orgId] = (counts[orgId] ?? 0) + 1;
+    for (const row of rows) {
+      counts[row.organization_id] = (counts[row.organization_id] ?? 0) + 1;
     }
 
     return counts;
@@ -31,15 +28,17 @@ export const membershipsRepository = {
     userId: string,
     organizationId: string,
   ): Promise<MembershipRow | null> {
-    const client = createSupabaseServiceClient();
-    const { data, error } = await client
-      .from("memberships")
-      .select(MEMBERSHIP_COLUMNS)
-      .eq("user_id", userId)
-      .eq("organization_id", organizationId)
-      .maybeSingle();
-
-    if (error) throw error;
-    return data as MembershipRow | null;
+    const db = createDb();
+    const [row] = await db
+      .select()
+      .from(memberships)
+      .where(
+        and(
+          eq(memberships.user_id, userId),
+          eq(memberships.organization_id, organizationId),
+        ),
+      )
+      .limit(1);
+    return row ?? null;
   },
 };

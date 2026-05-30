@@ -2,8 +2,9 @@ import type { PublicUser } from "@orvex/types";
 import type { Request } from "express";
 
 declare global {
-  // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
+    interface User extends PublicUser {}
+
     interface Request {
       userId?: string;
       user?: PublicUser;
@@ -14,10 +15,10 @@ declare global {
 declare module "express-session" {
   interface SessionData {
     userId?: string;
-    supabaseUserId?: string;
     sessionVersion?: number;
     createdAt?: number;
     mfaVerified?: boolean;
+    oauthLinkUserId?: string;
   }
 }
 

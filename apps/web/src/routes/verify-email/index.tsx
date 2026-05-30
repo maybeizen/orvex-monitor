@@ -4,7 +4,7 @@ import { Mail } from "lucide-react";
 
 import { Button, Spinner, useToast } from "@orvex/ui";
 
-import { resendSignupConfirmation } from "@/lib/auth";
+import { resendVerification } from "@/lib/auth-api";
 import { useAuthStore } from "@/stores/auth.store";
 
 export default function VerifyEmailPage() {
@@ -38,7 +38,7 @@ export default function VerifyEmailPage() {
     try {
       const email = apiUser?.email;
       if (!email) throw new Error("No email on file");
-      await resendSignupConfirmation(email);
+      await resendVerification(email);
       toast({ variant: "success", title: "Verification email sent" });
     } catch (err) {
       toast({ variant: "error", title: err instanceof Error ? err.message : "Failed to resend" });
@@ -71,9 +71,8 @@ export default function VerifyEmailPage() {
           Resend verification email
         </Button>
         <p className="mt-4 text-xs leading-relaxed text-slate-600">
-          This page refreshes automatically once your email is verified. If nothing arrives,
-          check spam. Supabase&apos;s default mailer only sends to organization team emails
-          until custom SMTP is configured (Authentication → SMTP in the dashboard).
+          This page refreshes automatically once your email is verified. If nothing arrives, check
+          spam or request another email above.
         </p>
       </div>
     </div>
